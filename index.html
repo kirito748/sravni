@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Сравнение Excel таблиц</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet" />
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+            color: #333;
+        }
+        h1 {
+            margin-bottom: 20px;
+            font-weight: 700;
+            color: #2c3e50;
+            text-align: center;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: 500;
+            color: #34495e;
+        }
+        input[type="file"] {
+            margin-top: 5px;
+            margin-bottom: 15px;
+            display: block;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 6px;
+            background: #fff;
+            width: 100%;
+            max-width: 400px;
+        }
+        button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #2980b9;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            display: block;
+            max-width: 400px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #3498db;
+        }
+        #results {
+            margin-top: 30px;
+            max-width: 900px;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .file-result {
+            margin-bottom: 30px;
+        }
+        .file-result h2 {
+            font-size: 20px;
+            color: #2c3e50;
+            border-bottom: 2px solid #2980b9;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #2980b9;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr.diff {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Сравнение Excel таблиц</h1>
+    <label>Выберите правильный файл Excel:</label>
+    <input type="file" id="correctFile" accept=".xlsx,.xls" />
+    <label>Выберите неправильные файлы Excel (до 10):</label>
+    <input type="file" id="incorrectFiles" accept=".xlsx,.xls" multiple />
+    <button id="compareBtn">Сравнить</button>
+    <div id="results"></div>
+
+    <script>
+        function readExcelFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    // Предполагаем, что данные в первом листе
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+                    resolve(jsonData);
+                };
+                reader.onerror = (err) => reject(err);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function compareTables(correctTable, testTable) {
+            // Сравним по строкам и столбцам
+            const differences = [];
+            const maxRows = Math.max(correctTable.length, testTable.length);
+            for (let i = 0; i < maxRows; i++) {
+                const correctRow = correctTable[i] || {};
+                const testRow = testTable[i] || {};
+                const allKeys = new Set([...Object.keys(correctRow), ...Object.keys(testRow)]);
+                for (const key of allKeys) {
+                    const correctValue = correctRow[key];
+                    const testValue = testRow[key];
+                    if (correctValue !== testValue) {
+                        differences.push({row: i + 1, column: key, correctValue: correctValue, testValue: testValue});
+                    }
+                }
+            }
+            return differences;
+        }
+
+        function renderDifferences(differences) {
+            if (differences.length === 0) {
+                return '<p>Отличий не найдено.</p>';
+            }
+            let html = '<table><thead><tr><th>Строка</th><th>Столбец</th><th>Правильное значение</th><th>Неправильное значение</th></tr></thead><tbody>';
+            for (const diff of differences) {
+                html += `<tr class="diff"><td>${diff.row}</td><td>${diff.column}</td><td>${diff.correctValue === null ? '' : diff.correctValue}</td><td>${diff.testValue === null ? '' : diff.testValue}</td></tr>`;
+            }
+            html += '</tbody></table>';
+            return html;
+        }
+
+        document.getElementById('compareBtn').addEventListener('click', async () => {
+            const correctFileInput = document.getElementById('correctFile');
+            const incorrectFilesInput = document.getElementById('incorrectFiles');
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+
+            if (correctFileInput.files.length === 0) {
+                alert('Пожалуйста, выберите правильный файл Excel.');
+                return;
+            }
+            if (incorrectFilesInput.files.length === 0) {
+                alert('Пожалуйста, выберите хотя бы один неправильный файл Excel.');
+                return;
+            }
+            if (incorrectFilesInput.files.length > 10) {
+                alert('Можно выбрать не более 10 неправильных файлов.');
+                return;
+            }
+
+            try {
+                const correctTable = await readExcelFile(correctFileInput.files[0]);
+                for (let i = 0; i < incorrectFilesInput.files.length; i++) {
+                    const testFile = incorrectFilesInput.files[i];
+                    const testTable = await readExcelFile(testFile);
+                    const diffs = compareTables(correctTable, testTable);
+                    const fileResultDiv = document.createElement('div');
+                    fileResultDiv.className = 'file-result';
+                    fileResultDiv.innerHTML = `<h2>Файл: ${testFile.name}</h2>` + renderDifferences(diffs);
+                    resultsDiv.appendChild(fileResultDiv);
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = '<p style="color:red;">Ошибка при чтении файлов: ' + error.message + '</p>';
+            }
+        });
+    </script>
+</body>
+</html>
